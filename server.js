@@ -18,10 +18,29 @@ const indexPath = path.join(distPath, 'index.html');
 if (!fs.existsSync(indexPath)) {
   console.log('dist/index.html not found. Running Vite build...');
   try {
-    execSync('npm run build', { stdio: 'inherit', cwd: __dirname });
+    // Set environment to production and suppress interactive prompts
+    const buildOutput = execSync('npm run build 2>&1', {
+      cwd: __dirname,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      timeout: 120000, // 2 minute timeout
+    });
+    console.log('Build output:\n', buildOutput);
+
+    // After build, verify the output was created
+    if (!fs.existsSync(indexPath)) {
+      throw new Error(
+        `Build completed but dist/index.html was not created. Build may have failed silently.\n${buildOutput}`
+      );
+    }
+    console.log('✓ Build successful. dist/index.html exists.');
   } catch (error) {
-    console.error('Build failed during server startup.');
-    console.error(error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('❌ Build FAILED:');
+    console.error(errorMsg);
+    console.error('\n--- Build Error Details ---');
+    console.error('This is why the application could not start.');
+    console.error('Fix the errors above and redeploy.\n');
     process.exit(1);
   }
 }
@@ -34,11 +53,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from dist folder (Vite build output)
-app.use(express.static(distPath));
+app.use(express.static(distPath, {
+  maxAge: '1d',
+  etag: false
+}));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', distExists: fs.existsSync(indexPath) });
+  res.json({
+    status: 'OK',
+    distExists: fs.existsSync(indexPath),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // API routes (add your API endpoints here)
@@ -51,23 +77,34 @@ app.get('*', (req, res) => {
     return;
   }
 
-  res.status(404).json({
-    error: 'Frontend build not found. Please make sure the app has built successfully.',
+  res.status(500).json({
+    error: 'Frontend build artifacts not found',
+    details: 'The Vite build did not produce dist/index.html. Check server logs for build errors.',
     distPath,
     indexPath,
+    distExists: fs.existsSync(distPath),
+    distContents: fs.existsSync(distPath) ? fs.readdirSync(distPath) : []
   });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Express Error:', err);
+  console.error('❌ Express Error:', err);
   res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Unknown error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+    path: req.path
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
-  console.log(`Serving frontend from: ${distPath}`);
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  process.exit(0);
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n✓ Server running on http://0.0.0.0:${PORT}`);
+  console.log(`✓ Serving frontend from: ${distPath}`);
+  console.log(`✓ Health check: http://0.0.0.0:${PORT}/health\n`);
 });
