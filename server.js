@@ -3,11 +3,28 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import { execSync } from 'child_process';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const distPath = path.join(__dirname, 'dist');
+const indexPath = path.join(distPath, 'index.html');
+
+// Ensure a production build exists before serving the app.
+// This prevents the deployment from failing when the host starts the server
+// without running a prior build step.
+if (!fs.existsSync(indexPath)) {
+  console.log('dist/index.html not found. Running Vite build...');
+  try {
+    execSync('npm run build', { stdio: 'inherit', cwd: __dirname });
+  } catch (error) {
+    console.error('Build failed during server startup.');
+    console.error(error);
+    process.exit(1);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,69 +33,41 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Check if dist folder exists
-const distPath = path.join(__dirname, 'dist');
-const distExists = fs.existsSync(distPath);
-console.log(`Dist folder exists: ${distExists} at ${distPath}`);
-
 // Serve static files from dist folder (Vite build output)
-if (distExists) {
-  app.use(express.static(distPath));
-  console.log(`Serving static files from ${distPath}`);
-} else {
-  console.warn(`WARNING: dist folder not found at ${distPath}`);
-  console.warn('Make sure to run "npm run build" before starting the server');
-}
+app.use(express.static(distPath));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', distExists });
+  res.json({ status: 'OK', distExists: fs.existsSync(indexPath) });
 });
 
 // API routes (add your API endpoints here)
-// Example:
-// app.post('/api/tickets', (req, res) => { ... });
+// app.get('/api/test', (req, res) => res.json({ ok: true }));
 
 // Fallback route: serve index.html for client-side routing
 app.get('*', (req, res) => {
-  const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
-  } else {
-    console.error(`index.html not found at ${indexPath}`);
-    res.status(404).json({ 
-      error: 'Application not found. Please ensure the build was completed successfully.',
-      distExists,
-      indexPath
-    });
+    return;
   }
+
+  res.status(404).json({
+    error: 'Frontend build not found. Please make sure the app has built successfully.',
+    distPath,
+    indexPath,
+  });
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Express Error:', err);
-  console.error('Error Stack:', err.stack);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Unknown error',
-    path: req.path
   });
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-  process.exit(1);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
-  console.log(`Dist folder path: ${distPath}`);
-  console.log(`Dist folder exists: ${distExists}`);
+  console.log(`Serving frontend from: ${distPath}`);
 });
