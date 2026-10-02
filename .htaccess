@@ -1,0 +1,39 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  
+  # Skip rewrite for actual files and directories
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  
+  # Rewrite all routes to index.html (SPA routing)
+  RewriteRule ^ index.html [QSA,L]
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-XSS-Protection "1; mode=block"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Compression
+<IfModule mod_gzip.c>
+  mod_gzip_on Yes
+  mod_gzip_dechunk Yes
+  mod_gzip_item_include file \.(html?|txt|xml|js|css|svg|json)$
+  mod_gzip_item_include handler ^cgi-script$
+  mod_gzip_item_exclude mime ^image/
+  mod_gzip_minimum_file_size 300
+  mod_gzip_maximum_file_size 512000
+</IfModule>
+
+# Cache settings for static assets
+<FilesMatch "\.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$">
+  Header set Cache-Control "max-age=31536000, public"
+</FilesMatch>
+
+<FilesMatch "\.(html|xml)$">
+  Header set Cache-Control "max-age=3600, public, must-revalidate"
+</FilesMatch>
