@@ -1,0 +1,8 @@
+{
+  "name": "Cimea Travel - Flights, Hotels & Tours",
+  "description": "Book flights, hotels, trains, and tours from Pakistan to Milan and worldwide destinations with exclusive member discounts on Cimea Travel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

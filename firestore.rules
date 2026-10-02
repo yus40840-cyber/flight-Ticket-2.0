@@ -1,0 +1,148 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global reusable helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Bootstrapped admin verification
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'yus40840@gmail.com' ||
+        request.auth.token.email == 'ramshaskhaikh544@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // User profile validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'email', 'displayName', 'role', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'email', 'displayName', 'phone', 'passportOrCnic', 'nationality', 'role', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.email is string && data.email.size() <= 128 &&
+        data.displayName is string && data.displayName.size() <= 100 &&
+        data.role in ['customer', 'admin'] &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+        (!('passportOrCnic' in data) || (data.passportOrCnic is string && data.passportOrCnic.size() <= 30)) &&
+        (!('nationality' in data) || (data.nationality is string && data.nationality.size() <= 60));
+    }
+
+    // Booking entity validation
+    function isValidBooking(data) {
+      return data.keys().hasAll(['id', 'userId', 'reference', 'type', 'title', 'price', 'passenger', 'passengerEmail', 'status', 'adminEmail', 'createdAt']) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'reference', 'eTicketNumber', 'type', 'title', 'price', 'date',
+          'passenger', 'passengerEmail', 'passengerPhone', 'passportOrCnic', 'status',
+          'adminEmail', 'approvalToken', 'paymentStatus', 'seat', 'gate', 'terminal',
+          'cabinClass', 'originCode', 'destCode', 'createdAt', 'updatedAt', 'approvedAt'
+        ]) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.userId is string && data.userId.size() <= 128 &&
+        data.reference is string && data.reference.size() <= 30 &&
+        data.type in ['flight', 'train', 'hotel'] &&
+        data.title is string && data.title.size() <= 200 &&
+        data.price is number && data.price >= 0 &&
+        data.passenger is string && data.passenger.size() <= 100 &&
+        data.passengerEmail is string && data.passengerEmail.size() <= 128 &&
+        data.adminEmail is string && data.adminEmail.size() <= 128 &&
+        data.status in ['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED'] &&
+        (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
+        (!('eTicketNumber' in data) || (data.eTicketNumber is string && data.eTicketNumber.size() <= 30)) &&
+        (!('passengerPhone' in data) || (data.passengerPhone is string && data.passengerPhone.size() <= 30)) &&
+        (!('passportOrCnic' in data) || (data.passportOrCnic is string && data.passportOrCnic.size() <= 30)) &&
+        (!('approvalToken' in data) || (data.approvalToken is string && data.approvalToken.size() <= 64)) &&
+        (!('seat' in data) || (data.seat is string && data.seat.size() <= 20)) &&
+        (!('gate' in data) || (data.gate is string && data.gate.size() <= 20)) &&
+        (!('terminal' in data) || (data.terminal is string && data.terminal.size() <= 20)) &&
+        (!('cabinClass' in data) || (data.cabinClass is string && data.cabinClass.size() <= 30)) &&
+        (!('originCode' in data) || (data.originCode is string && data.originCode.size() <= 10)) &&
+        (!('destCode' in data) || (data.destCode is string && data.destCode.size() <= 10));
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() &&
+        isValidId(userId) &&
+        userId == request.auth.uid &&
+        isValidUser(incoming()) &&
+        incoming().role == 'customer' &&
+        incoming().createdAt == request.time;
+      allow update: if isSignedIn() &&
+        isValidId(userId) &&
+        userId == request.auth.uid &&
+        isValidUser(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().role == existing().role &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // Bookings Collection
+    match /bookings/{bookingId} {
+      // Owner or Admin can read individual bookings
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // List enforced by userId or Admin
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Create new booking with pending status
+      allow create: if isSignedIn() &&
+        isValidId(bookingId) &&
+        isValidBooking(incoming()) &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'PENDING_APPROVAL' &&
+        incoming().createdAt == request.time;
+
+      // Update booking
+      allow update: if isSignedIn() &&
+        isValidId(bookingId) &&
+        isValidBooking(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        (
+          isAdmin() ||
+          // User action: Cancel own booking
+          (
+            existing().userId == request.auth.uid &&
+            incoming().status == 'CANCELLED' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ) ||
+          // Approval action by token or admin
+          (
+            incoming().status in ['APPROVED', 'REJECTED'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'approvedAt'])
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Connectivity test document
+    match /test/{docId} {
+      allow read: if true;
+    }
+  }
+}

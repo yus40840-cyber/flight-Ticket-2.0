@@ -1,0 +1,233 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Registered user profile and passenger preferences",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address",
+          "maxLength": 128
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Full name of the passenger",
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number",
+          "maxLength": 30
+        },
+        "passportOrCnic": {
+          "type": "string",
+          "description": "Passport or CNIC number",
+          "maxLength": 30
+        },
+        "nationality": {
+          "type": "string",
+          "description": "Country of nationality",
+          "maxLength": 60
+        },
+        "role": {
+          "type": "string",
+          "description": "User role (customer or admin)",
+          "enum": ["customer", "admin"],
+          "maxLength": 20
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["id", "email", "displayName", "role", "createdAt"]
+    },
+    "Booking": {
+      "title": "Flight & Travel Booking",
+      "description": "Flight and train reservation records requiring admin email approval",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Booking document identifier",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Auth UID of the passenger who placed the booking",
+          "maxLength": 128
+        },
+        "reference": {
+          "type": "string",
+          "description": "6-character alphanumeric PNR reference code",
+          "maxLength": 30
+        },
+        "eTicketNumber": {
+          "type": "string",
+          "description": "13-digit IATA e-ticket code",
+          "maxLength": 30
+        },
+        "type": {
+          "type": "string",
+          "description": "Type of booking",
+          "enum": ["flight", "train", "hotel"],
+          "maxLength": 20
+        },
+        "title": {
+          "type": "string",
+          "description": "Flight itinerary or route description",
+          "maxLength": 200
+        },
+        "price": {
+          "type": "number",
+          "description": "Total price paid in PKR"
+        },
+        "date": {
+          "type": "string",
+          "description": "Travel departure date",
+          "maxLength": 50
+        },
+        "passenger": {
+          "type": "string",
+          "description": "Passenger full name",
+          "maxLength": 100
+        },
+        "passengerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Passenger contact email",
+          "maxLength": 128
+        },
+        "passengerPhone": {
+          "type": "string",
+          "description": "Passenger phone number",
+          "maxLength": 30
+        },
+        "passportOrCnic": {
+          "type": "string",
+          "description": "Passenger Passport / National ID",
+          "maxLength": 30
+        },
+        "status": {
+          "type": "string",
+          "description": "Approval and ticket issuance state",
+          "enum": ["PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"],
+          "maxLength": 30
+        },
+        "adminEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Target approval email (yus40840@gmail.com)",
+          "maxLength": 128
+        },
+        "approvalToken": {
+          "type": "string",
+          "description": "Secure verification token for email one-click approval",
+          "maxLength": 64
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["PAID", "PENDING", "REFUNDED"],
+          "maxLength": 20
+        },
+        "seat": {
+          "type": "string",
+          "description": "Assigned seat number",
+          "maxLength": 20
+        },
+        "gate": {
+          "type": "string",
+          "description": "Boarding gate number",
+          "maxLength": 20
+        },
+        "terminal": {
+          "type": "string",
+          "description": "Airport terminal identifier",
+          "maxLength": 20
+        },
+        "cabinClass": {
+          "type": "string",
+          "description": "Cabin class selection",
+          "maxLength": 30
+        },
+        "originCode": {
+          "type": "string",
+          "description": "Departure airport IATA code",
+          "maxLength": 10
+        },
+        "destCode": {
+          "type": "string",
+          "description": "Arrival airport IATA code",
+          "maxLength": 10
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when booking was submitted"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when booking or approval status was updated"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "reference",
+        "type",
+        "title",
+        "price",
+        "passenger",
+        "passengerEmail",
+        "status",
+        "adminEmail",
+        "createdAt"
+      ]
+    },
+    "TestConnection": {
+      "title": "System Connection Test",
+      "description": "Connectivity test document",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "maxLength": 20
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "User profile records containing passenger credentials and contact information"
+    },
+    "/bookings/{bookingId}": {
+      "schema": {
+        "$ref": "#/entities/Booking"
+      },
+      "description": "Travel bookings requiring admin verification and email approval workflow"
+    },
+    "/test/{docId}": {
+      "schema": {
+        "$ref": "#/entities/TestConnection"
+      },
+      "description": "Readiness test endpoint"
+    }
+  }
+}
