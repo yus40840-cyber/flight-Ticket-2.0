@@ -27,8 +27,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
       });
       onClose();
     } catch (err: any) {
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setErrorMsg(err.message || 'Failed to sign in with Google');
+      // Handle specific Firebase Auth errors
+      if (err.code === 'auth/popup-closed-by-user') {
+        // User closed the popup, don't show error
+        setErrorMsg(null);
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setErrorMsg('Google Sign-In is not enabled in Firebase Console. Please contact support.');
+      } else if (err.code === 'auth/invalid-client-id') {
+        setErrorMsg('Firebase configuration error. Please contact support.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setErrorMsg('Network error. Please check your connection and try again.');
+      } else {
+        setErrorMsg(err.message || 'Failed to sign in with Google. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -73,6 +83,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
         msg = 'Password is too weak. Please use at least 6 characters.';
       } else if (err.code === 'auth/invalid-email') {
         msg = 'Please enter a valid email address.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        msg = 'Email/Password authentication is not enabled. Please try Google Sign-In.';
+      } else if (err.code === 'auth/user-not-found') {
+        msg = 'No account found with this email. Please register first.';
       }
       setErrorMsg(msg);
     } finally {
@@ -114,7 +128,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
             type="button"
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -134,7 +148,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
               />
             </svg>
-            <span>Continue with Google</span>
+            <span>{loading ? 'Signing in...' : 'Continue with Google'}</span>
           </button>
 
           <div className="relative flex items-center justify-center my-3">
@@ -201,7 +215,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>{isRegister ? 'Register & Create Account' : 'Sign In Securely'}</span>
