@@ -342,11 +342,17 @@ Fligh.com Booking & Approval System`);
                   Status: Pending Admin Approval
                 </span>
                 <h3 className="font-display font-black text-2xl text-slate-900 mt-3">
-                  Request to Approve Ticket Dispatched
+                  Submitted for Admin Approval
                 </h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  Your ticket has been confirmed and submitted for verification to the administrator. Once approved, the verified e-ticket and boarding barcode will automatically appear on this website.
+                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed max-w-md mx-auto">
+                  Your ticket has been confirmed and submitted for official <strong>Admin Approval</strong>. The approval request has been sent to the Admin via email and is now in the <strong>Admin Dashboard</strong> on the website.
                 </p>
+                <div className="mt-3 p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs text-blue-900 font-medium">
+                  Once authorized by the Admin, you will receive a direct notification in your account dashboard:
+                  <div className="font-bold text-blue-950 mt-1 italic">
+                    “Your ticket has been received and approved. Kindly receive/collect your ticket.”
+                  </div>
+                </div>
               </div>
 
               {/* Sent Status Banner */}

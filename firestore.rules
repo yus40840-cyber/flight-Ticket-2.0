@@ -25,26 +25,44 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Bootstrapped admin verification
-    function isAdmin() {
+    // Role-Based Access Control (RBAC) helpers
+    function isSuperAdmin() {
       return isSignedIn() && (
         request.auth.token.email == 'yus40840@gmail.com' ||
         request.auth.token.email == 'ramshaskhaikh544@gmail.com' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
+      );
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isVerificationStaff() {
+      return isAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'verification_staff'
       );
     }
 
     // User profile validation
     function isValidUser(data) {
       return data.keys().hasAll(['id', 'email', 'displayName', 'role', 'createdAt']) &&
-        data.keys().hasOnly(['id', 'email', 'displayName', 'phone', 'passportOrCnic', 'nationality', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'email', 'displayName', 'phone', 'passportOrCnic', 'nationality', 'role', 'status', 'createdAt', 'updatedAt']) &&
         data.id is string && data.id.size() <= 128 &&
         data.email is string && data.email.size() <= 128 &&
         data.displayName is string && data.displayName.size() <= 100 &&
-        data.role in ['customer', 'admin'] &&
+        data.role in ['customer', 'admin', 'super_admin', 'verification_staff'] &&
         (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
         (!('passportOrCnic' in data) || (data.passportOrCnic is string && data.passportOrCnic.size() <= 30)) &&
-        (!('nationality' in data) || (data.nationality is string && data.nationality.size() <= 60));
+        (!('nationality' in data) || (data.nationality is string && data.nationality.size() <= 60)) &&
+        (!('status' in data) || (data.status in ['active', 'disabled']));
     }
 
     // Booking entity validation
@@ -54,12 +72,13 @@ service cloud.firestore {
           'id', 'userId', 'reference', 'eTicketNumber', 'type', 'title', 'price', 'date',
           'passenger', 'passengerEmail', 'passengerPhone', 'passportOrCnic', 'status',
           'adminEmail', 'approvalToken', 'paymentStatus', 'seat', 'gate', 'terminal',
-          'cabinClass', 'originCode', 'destCode', 'createdAt', 'updatedAt', 'approvedAt'
+          'cabinClass', 'originCode', 'destCode', 'createdAt', 'updatedAt', 'approvedAt',
+          'isUsed', 'usedAt', 'usedByStaffId', 'usedByStaffName'
         ]) &&
         data.id is string && data.id.size() <= 128 &&
         data.userId is string && data.userId.size() <= 128 &&
         data.reference is string && data.reference.size() <= 30 &&
-        data.type in ['flight', 'train', 'hotel'] &&
+        data.type in ['flight', 'train', 'hotel', 'sight'] &&
         data.title is string && data.title.size() <= 200 &&
         data.price is number && data.price >= 0 &&
         data.passenger is string && data.passenger.size() <= 100 &&
@@ -76,10 +95,14 @@ service cloud.firestore {
         (!('terminal' in data) || (data.terminal is string && data.terminal.size() <= 20)) &&
         (!('cabinClass' in data) || (data.cabinClass is string && data.cabinClass.size() <= 30)) &&
         (!('originCode' in data) || (data.originCode is string && data.originCode.size() <= 10)) &&
-        (!('destCode' in data) || (data.destCode is string && data.destCode.size() <= 10));
+        (!('destCode' in data) || (data.destCode is string && data.destCode.size() <= 10)) &&
+        (!('isUsed' in data) || data.isUsed is bool) &&
+        (!('usedAt' in data) || (data.usedAt is string && data.usedAt.size() <= 50)) &&
+        (!('usedByStaffId' in data) || (data.usedByStaffId is string && data.usedByStaffId.size() <= 128)) &&
+        (!('usedByStaffName' in data) || (data.usedByStaffName is string && data.usedByStaffName.size() <= 100));
     }
 
-    // Users Collection
+    // Users Collection (RBAC managed)
     match /users/{userId} {
       allow get: if isSignedIn() && (userId == request.auth.uid || isAdmin());
       allow list: if isAdmin();
@@ -87,33 +110,30 @@ service cloud.firestore {
         isValidId(userId) &&
         userId == request.auth.uid &&
         isValidUser(incoming()) &&
-        incoming().role == 'customer' &&
-        incoming().createdAt == request.time;
+        (incoming().role == 'customer' || isSuperAdmin());
       allow update: if isSignedIn() &&
         isValidId(userId) &&
-        userId == request.auth.uid &&
+        (userId == request.auth.uid || isSuperAdmin()) &&
         isValidUser(incoming()) &&
         incoming().id == existing().id &&
-        incoming().role == existing().role &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().updatedAt == request.time;
-      allow delete: if isAdmin();
+        // Customer cannot change their own role or status; only Super Admin can
+        (isSuperAdmin() || (incoming().role == existing().role && (!('status' in incoming()) || incoming().status == existing().status)));
+      allow delete: if isSuperAdmin();
     }
 
     // Bookings Collection
     match /bookings/{bookingId} {
-      // Owner or Admin can read individual bookings
-      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      // List enforced by userId or Admin
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // Owner, Staff, Admin or Super Admin can read individual bookings
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isVerificationStaff());
+      // List enforced by userId, or staff/admin
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isVerificationStaff());
 
-      // Create new booking with pending status
+      // Customer or Admin can create new booking with pending status
       allow create: if isSignedIn() &&
         isValidId(bookingId) &&
         isValidBooking(incoming()) &&
-        incoming().userId == request.auth.uid &&
-        incoming().status == 'PENDING_APPROVAL' &&
-        incoming().createdAt == request.time;
+        (incoming().userId == request.auth.uid || isAdmin()) &&
+        incoming().status == 'PENDING_APPROVAL';
 
       // Update booking
       allow update: if isSignedIn() &&
@@ -121,23 +141,43 @@ service cloud.firestore {
         isValidBooking(incoming()) &&
         incoming().id == existing().id &&
         incoming().userId == existing().userId &&
-        incoming().createdAt == existing().createdAt &&
         (
+          // Admin or Super Admin: approve, reject, modify
           isAdmin() ||
-          // User action: Cancel own booking
+          // Verification Staff: mark as used at checkpoint
+          (
+            isVerificationStaff() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['isUsed', 'usedAt', 'usedByStaffId', 'usedByStaffName', 'updatedAt'])
+          ) ||
+          // Customer: cancel own booking
           (
             existing().userId == request.auth.uid &&
             incoming().status == 'CANCELLED' &&
             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
           ) ||
-          // Approval action by token or admin
+          // Direct token authorization by customer with matching token
           (
             incoming().status in ['APPROVED', 'REJECTED'] &&
             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'approvedAt'])
           )
         );
 
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // Audit Logs Collection (Immutable, append-only)
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Immutable audit trail
     }
 
     // Connectivity test document

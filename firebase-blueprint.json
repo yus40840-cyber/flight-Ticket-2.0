@@ -38,9 +38,9 @@
         },
         "role": {
           "type": "string",
-          "description": "User role (customer or admin)",
-          "enum": ["customer", "admin"],
-          "maxLength": 20
+          "description": "User role based on RBAC specification",
+          "enum": ["customer", "admin", "super_admin", "verification_staff"],
+          "maxLength": 30
         },
         "createdAt": {
           "type": "string",
@@ -208,6 +208,94 @@
           "maxLength": 20
         }
       }
+    },
+    "Notification": {
+      "title": "User Account Notification",
+      "description": "Direct in-account notification notifying passenger of approval and ticket collection",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "bookingId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "reference": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "type": {
+          "type": "string",
+          "enum": ["TICKET_APPROVED", "BOOKING_PENDING", "TICKET_ISSUED"],
+          "maxLength": 30
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "bookingId", "reference", "type", "title", "message", "read", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "System Audit Log",
+      "description": "Read-only immutable record of sensitive operational and security events",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "actorId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "actorEmail": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "actorRole": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "action": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "resourceType": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "resourceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "actorId", "actorRole", "action", "resourceType", "resourceId", "timestamp"]
     }
   },
   "firestore": {
@@ -222,6 +310,18 @@
         "$ref": "#/entities/Booking"
       },
       "description": "Travel bookings requiring admin verification and email approval workflow"
+    },
+    "/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "In-account user notification records for ticket approval and collection notices"
+    },
+    "/audit_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/AuditLog"
+      },
+      "description": "System audit trail records for compliance and access oversight"
     },
     "/test/{docId}": {
       "schema": {

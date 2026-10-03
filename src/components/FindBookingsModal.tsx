@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Search,
@@ -14,12 +14,14 @@ import {
   Check,
   Copy,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import { ETicketView, ETicketData } from './ETicketView';
 import { FLIGHT_SEARCH_RESULTS } from '../data/travelData';
 
 export interface BookingRecord {
   id?: string;
+  userId?: string;
   reference: string;
   eTicketNumber?: string;
   type: 'flight' | 'hotel' | 'train' | 'sight';
@@ -41,6 +43,7 @@ interface FindBookingsModalProps {
   onClose: () => void;
   onApproveBooking?: (bookingId: string) => Promise<any> | void;
   userEmail?: string;
+  initialSelectedRef?: string;
 }
 
 export const FindBookingsModal: React.FC<FindBookingsModalProps> = ({
@@ -48,11 +51,24 @@ export const FindBookingsModal: React.FC<FindBookingsModalProps> = ({
   onClose,
   onApproveBooking,
   userEmail,
+  initialSelectedRef,
 }) => {
   const [searchRef, setSearchRef] = useState('');
   const [viewingTicket, setViewingTicket] = useState<ETicketData | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // If opened directly from notification for a specific ticket, open it immediately
+  useEffect(() => {
+    if (initialSelectedRef) {
+      const match = bookings.find(
+        (b) => b.reference === initialSelectedRef || b.id === initialSelectedRef
+      );
+      if (match) {
+        handleOpenTicket(match);
+      }
+    }
+  }, [initialSelectedRef, bookings]);
 
   const displayBookings = searchRef.trim()
     ? bookings.filter(
@@ -243,6 +259,27 @@ Fligh.com Booking & Approval Service`);
 
             {/* Bookings list */}
             <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3">
+              {/* Direct Account Notification Banner for Approved Bookings */}
+              {displayBookings.some((b) => b.status === 'APPROVED' || b.status?.includes('Confirmed')) && (
+                <div className="p-4 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-300/80 rounded-2xl flex items-start gap-3 shadow-xs">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+                      <span>Direct Account Notification</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    </div>
+                    <p className="text-xs sm:text-sm font-extrabold text-emerald-950 mt-1 leading-snug">
+                      “Your ticket has been received and approved. Kindly receive/collect your ticket.”
+                    </p>
+                    <p className="text-[11px] text-emerald-800 mt-1">
+                      Your official boarding pass and e-ticket are available below with QR code, barcode, seat assignment, and PDF download.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {displayBookings.length === 0 ? (
                 <div className="text-center py-10 text-slate-400">
                   <Ticket className="w-10 h-10 mx-auto mb-2 text-slate-300" />
@@ -366,10 +403,10 @@ Fligh.com Booking & Approval Service`);
 
                             <button
                               onClick={() => handleOpenTicket(b)}
-                              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ml-auto"
+                              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg flex items-center gap-1.5 cursor-pointer ml-auto active:scale-98"
                             >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>View & Download E-Ticket</span>
+                              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                              <span>Receive / Collect Official E-Ticket</span>
                             </button>
                           </>
                         )}

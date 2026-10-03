@@ -122,3 +122,54 @@ export interface CouponItem {
   expiresIn: string;
   claimed: boolean;
 }
+
+// ============================================================================
+// ROLE-BASED ACCESS CONTROL (RBAC) & VERIFICATION TYPES
+// ============================================================================
+
+export type UserRole = 'customer' | 'admin' | 'super_admin' | 'verification_staff';
+
+export interface AppUser {
+  uid: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  phone?: string;
+  passportOrCnic?: string;
+  status?: 'active' | 'disabled';
+}
+
+export type VerificationResultCode = 'VALID' | 'ALREADY_USED' | 'CANCELLED' | 'EXPIRED' | 'INVALID';
+
+export interface TicketVerificationResult {
+  code: VerificationResultCode;
+  message: string;
+  ticketId: string;
+  status: string;
+  passengerName?: string;
+  routeTitle?: string;
+  seat?: string;
+  gate?: string;
+  terminal?: string;
+  boardingTime?: string;
+  travelDate?: string;
+  pricePKR?: number;
+  verifiedAt: string;
+  staffEmail?: string;
+  isUsed?: boolean;
+  usedAt?: string;
+  usedByStaffName?: string;
+}
+
+export interface AuditLogItem {
+  id: string;
+  actorId: string;
+  actorEmail: string;
+  actorRole: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  details?: string;
+  timestamp: string;
+}
+

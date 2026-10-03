@@ -18,6 +18,7 @@ import { MomentDetailsModal } from './components/MomentDetailsModal';
 import { AuthModal } from './components/AuthModal';
 import { FindBookingsModal, BookingRecord } from './components/FindBookingsModal';
 import { AdminDashboardModal } from './components/AdminDashboardModal';
+import { TicketVerificationModal } from './components/TicketVerificationModal';
 import { AirlinesAndAirportsSection } from './components/AirlinesAndAirportsSection';
 import { WorldwideAirport, WorldwideAirline } from './data/worldwideAviationData';
 
@@ -51,18 +52,33 @@ import {
   ADMIN_EMAILS,
   handleFirestoreError,
   OperationType,
+  UserNotification,
+  createUserNotification,
+  markNotificationAsRead,
 } from './firebase';
 import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+import { CheckCircle2, Sparkles, Ticket, X } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('flights');
   const [currency, setCurrency] = useState('PKR');
   const [coupons, setCoupons] = useState<CouponItem[]>(INITIAL_COUPONS);
-  const [user, setUser] = useState<{ uid: string; name: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ uid: string; name: string; email: string; role?: string } | null>(null);
 
   // Live Bookings state
   const [bookings, setBookings] = useState<BookingRecord[]>(() => localDb.bookings.getAll());
   const [approvalToast, setApprovalToast] = useState<string | null>(null);
+
+  // Direct Account Notifications State
+  const [userNotifications, setUserNotifications] = useState<UserNotification[]>([]);
+  const [approvedTicketAlert, setApprovedTicketAlert] = useState<{
+    reference: string;
+    title: string;
+    message: string;
+  } | null>(null);
+  const [selectedBookingRefForModal, setSelectedBookingRefForModal] = useState<string | undefined>(
+    undefined
+  );
 
   // Search State
   const [flightSearchState, setFlightSearchState] = useState<FlightSearchState>({
@@ -92,6 +108,7 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [findBookingsModalOpen, setFindBookingsModalOpen] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
+  const [verificationStationOpen, setVerificationStationOpen] = useState(false);
 
   // Test Firestore Connection on Boot (SKILL.md constraint)
   useEffect(() => {
@@ -102,10 +119,14 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
+        const isSuperAdminEmail =
+          firebaseUser.email?.toLowerCase() === 'yus40840@gmail.com' ||
+          firebaseUser.email?.toLowerCase() === 'ramshaskhaikh544@gmail.com';
         const u = {
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Traveler',
           email: firebaseUser.email || '',
+          role: isSuperAdminEmail ? 'super_admin' : 'customer',
         };
         setUser(u);
         syncUserProfile(firebaseUser);
@@ -210,6 +231,58 @@ export default function App() {
 
     return () => unsubscribe();
   }, [user]);
+
+  // Real-time User Notifications Listener
+  useEffect(() => {
+    if (!user?.uid) {
+      setUserNotifications([]);
+      return;
+    }
+
+    const notifCol = collection(firestoreDb, 'notifications');
+    const q = query(notifCol, where('userId', '==', user.uid));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: UserNotification[] = [];
+        snapshot.forEach((doc) => {
+          const d = doc.data();
+          list.push({
+            id: doc.id,
+            userId: d.userId,
+            passengerEmail: d.passengerEmail,
+            bookingId: d.bookingId,
+            reference: d.reference,
+            type: d.type || 'TICKET_APPROVED',
+            title: d.title || 'Ticket Approved & Ready to Collect',
+            message:
+              d.message ||
+              'Your ticket has been received and approved. Kindly receive/collect your ticket.',
+            read: Boolean(d.read),
+            createdAt: d.createdAt,
+          });
+        });
+
+        setUserNotifications(list);
+
+        // Check if there is an unread approval notification
+        const unreadApproval = list.find((n) => !n.read && n.type === 'TICKET_APPROVED');
+        if (unreadApproval) {
+          setApprovedTicketAlert({
+            reference: unreadApproval.reference,
+            title: 'Fligh.com Official Ticket Issuance',
+            message: unreadApproval.message,
+          });
+        }
+      },
+      (err) => {
+        console.warn('Notifications real-time listener notice:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   // Compute pending approvals count
   const pendingApprovalsCount = bookings.filter(
@@ -398,6 +471,19 @@ export default function App() {
   const handleApproveBooking = async (bookingId: string) => {
     try {
       await approveFirestoreBooking(bookingId);
+      const targetBooking = bookings.find((b) => b.id === bookingId || b.reference === bookingId);
+
+      if (targetBooking?.userId) {
+        await createUserNotification({
+          userId: targetBooking.userId,
+          bookingId: targetBooking.id || bookingId,
+          reference: targetBooking.reference,
+          passengerEmail: targetBooking.passengerEmail,
+          title: 'Ticket Approved & Ready to Collect',
+          message: 'Your ticket has been received and approved. Kindly receive/collect your ticket.',
+        });
+      }
+
       setApprovalToast(`✅ Booking #${bookingId} has been successfully APPROVED! Official E-Ticket is issued.`);
       setBookings((prev) =>
         prev.map((b) =>
@@ -406,8 +492,22 @@ export default function App() {
             : b
         )
       );
+
+      // Trigger direct account notification for the user
+      if (
+        user &&
+        targetBooking &&
+        (targetBooking.userId === user.uid || targetBooking.passengerEmail === user.email)
+      ) {
+        setApprovedTicketAlert({
+          reference: targetBooking.reference,
+          title: 'Ticket Received & Approved!',
+          message: 'Your ticket has been received and approved. Kindly receive/collect your ticket.',
+        });
+      }
     } catch (err) {
       // Local fallback approval
+      const targetBooking = bookings.find((b) => b.id === bookingId || b.reference === bookingId);
       setBookings((prev) =>
         prev.map((b) =>
           (b.id === bookingId || b.reference === bookingId)
@@ -416,7 +516,24 @@ export default function App() {
         )
       );
       setApprovalToast(`✅ Booking #${bookingId} status updated to APPROVED.`);
+      if (
+        user &&
+        targetBooking &&
+        (targetBooking.userId === user.uid || targetBooking.passengerEmail === user.email)
+      ) {
+        setApprovedTicketAlert({
+          reference: targetBooking.reference,
+          title: 'Ticket Received & Approved!',
+          message: 'Your ticket has been received and approved. Kindly receive/collect your ticket.',
+        });
+      }
     }
+  };
+
+  const handleCollectTicket = (bookingRef: string) => {
+    setApprovedTicketAlert(null);
+    setSelectedBookingRefForModal(bookingRef);
+    setFindBookingsModalOpen(true);
   };
 
   const handleBookTickets = (sight: SightItem) => {
@@ -470,6 +587,7 @@ export default function App() {
         onOpenAuth={() => setAuthModalOpen(true)}
         onOpenBookings={() => setFindBookingsModalOpen(true)}
         onOpenAdminDashboard={() => setAdminDashboardOpen(true)}
+        onOpenVerificationStation={() => setVerificationStationOpen(true)}
         onOpenAppQR={() => {
           document.getElementById('app-download-section')?.scrollIntoView({ behavior: 'smooth' });
         }}
@@ -478,7 +596,69 @@ export default function App() {
         onCurrencyChange={setCurrency}
         user={user}
         onSignOut={handleSignOut}
+        notifications={userNotifications}
+        onCollectTicket={handleCollectTicket}
+        onMarkNotificationAsRead={(notifId) => markNotificationAsRead(notifId)}
       />
+
+      {/* Floating Direct Account Notification Banner */}
+      {approvedTicketAlert && (
+        <aside
+          aria-label="Approved Ticket Notification"
+          className="fixed bottom-5 right-4 sm:right-6 z-50 max-w-md w-full bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 text-white p-5 rounded-2xl shadow-2xl border-2 border-emerald-500/90 animate-in slide-in-from-bottom-5 duration-300"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Direct Account Notification
+                </span>
+                <button
+                  onClick={() => setApprovedTicketAlert(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Dismiss alert"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <h4 className="font-display font-black text-sm text-white mt-1.5">
+                Ticket Received & Approved!
+              </h4>
+              <p className="text-xs text-emerald-300 font-semibold mt-1 leading-snug">
+                “{approvedTicketAlert.message}”
+              </p>
+              <div className="text-[11px] text-slate-300 mt-1 flex items-center gap-2">
+                <span>
+                  PNR Reference:{' '}
+                  <strong className="font-mono text-white font-bold">
+                    {approvedTicketAlert.reference}
+                  </strong>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-slate-800">
+                <button
+                  onClick={() => handleCollectTicket(approvedTicketAlert.reference)}
+                  className="flex-1 py-2 px-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-98"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Receive / Collect Ticket</span>
+                </button>
+                <button
+                  onClick={() => setApprovedTicketAlert(null)}
+                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+      )}
 
       {/* Hero Flight & Travel Search Section */}
       <main className="flex-1">
@@ -581,9 +761,13 @@ export default function App() {
       {findBookingsModalOpen && (
         <FindBookingsModal
           bookings={bookings}
-          onClose={() => setFindBookingsModalOpen(false)}
+          onClose={() => {
+            setFindBookingsModalOpen(false);
+            setSelectedBookingRefForModal(undefined);
+          }}
           onApproveBooking={handleApproveBooking}
           userEmail={user?.email}
+          initialSelectedRef={selectedBookingRefForModal}
         />
       )}
 
@@ -606,6 +790,29 @@ export default function App() {
           onAdminLoginSuccess={(adminUser) => {
             setUser(adminUser);
           }}
+        />
+      )}
+
+      {verificationStationOpen && (
+        <TicketVerificationModal
+          isOpen={verificationStationOpen}
+          onClose={() => setVerificationStationOpen(false)}
+          staffUser={
+            user
+              ? {
+                  uid: user.uid,
+                  name: user.name,
+                  email: user.email,
+                  role: user.role || 'verification_staff',
+                }
+              : {
+                  uid: 'staff-101',
+                  name: 'Checkpoint Officer',
+                  email: 'checkpoint.staff@fligh.com',
+                  role: 'verification_staff',
+                }
+          }
+          bookings={bookings}
         />
       )}
     </div>
