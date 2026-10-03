@@ -1,7 +1,3 @@
-// ============================================================================
-// FIREBASE AUTHENTICATION & CLOUD FIRESTORE INITIALIZATION
-// ============================================================================
-
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -32,7 +28,31 @@ import {
   Timestamp,
   setLogLevel,
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+
+const firebaseConfig = {
+  projectId:
+    import.meta.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0349934050',
+  appId:
+    import.meta.env.VITE_FIREBASE_APP_ID || '1:486221198031:web:f9371c7e28cb3e06cd3dba',
+  apiKey:
+    import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyBTDldJ77io_k-TS-XeVPdrVEBaCADLBpA',
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
+    (typeof window !== 'undefined' ? window.location.hostname : 'localhost'),
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    'gen-lang-client-0349934050.firebasestorage.app',
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '486221198031',
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || '',
+  oAuthClientId:
+    import.meta.env.VITE_FIREBASE_OAUTH_CLIENT_ID ||
+    '486221198031-il0a3kqhg6t6pfdnticljdvv8viimb48.apps.googleusercontent.com',
+  recaptchaSiteKey: import.meta.env.VITE_FIREBASE_RECAPTCHA_SITE_KEY || '',
+  firestoreDatabaseId:
+    import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+    'ai-studio-flightfinder-2f58eb91-4f56-4af9-a559-be002f9e2f22',
+};
 
 // Silence Firestore internal network connection warnings in console
 setLogLevel('error');
@@ -185,7 +205,6 @@ export async function signInWithGoogle() {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
-    // Sync / Upsert user profile to Firestore
     await syncUserProfile(user);
     return user;
   } catch (error: any) {
@@ -224,7 +243,6 @@ export async function loginWithEmail(email: string, pass: string) {
     await syncUserProfile(res.user);
     return res.user;
   } catch (error: any) {
-    // If admin is logging in for the first time, auto-provision user in Firebase Auth
     if (
       (email === 'yus40840@gmail.com' || email === 'ramshaskhaikh544@gmail.com') &&
       (error?.code === 'auth/user-not-found' ||
@@ -371,7 +389,6 @@ export async function approveFirestoreBooking(
     }
 
     const data = snap.data() as FirestoreBooking;
-    // Check if token matches or user is admin
     const currentUserEmail = auth.currentUser?.email;
     const isAdmin =
       ADMIN_EMAILS.includes(currentUserEmail || '') ||
